@@ -31,4 +31,3 @@ class SAViParams:
     hidden_dims: Tuple[int, int, int] = (32, 32, 32, 32)
     decoder_hidden_dims: Tuple[int, int, int] = (128, 64, 64, 64)
     log_ari: bool = True
-    log_mot_metrics: bool = True

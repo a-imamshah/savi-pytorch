@@ -8,7 +8,7 @@ from params import SAViParams
 from utils import Tensor
 from utils import to_rgb_from_tensor
 
-from evaluation import compute_ari, compute_mot_metrics
+from evaluation import compute_ari
 
 import numpy as np
 
@@ -23,8 +23,7 @@ class SAViMethod(pl.LightningModule):
         self.datamodule = datamodule
         self.params = params
         self.save_hyperparameters()
-        
-        self.epochs = 0
+
 
     def forward(self, input: Tensor, **kwargs) -> Tensor:
         return self.model(input, **kwargs)
@@ -71,20 +70,10 @@ class SAViMethod(pl.LightningModule):
     def validation_epoch_end(self, outputs):
         
         if params.log_ari:
-            if(self.epochs%2==0):
-                ari = compute_ari(self.model)
-                logs = {"mean_ari": ari,}
-                self.log_dict(logs, sync_dist=True)
-                
-                
-        if params.log_mot_metrics:
-            if(self.epochs%5==0):
-                pred_mot_path = "/kuacc/users/ashah20/SAVi/pred_mot_path.json"
-                gt_mot_path = "/kuacc/users/ashah20/SAVi/gt_mot_path.json"
-                metrics = compute_mot_metrics(self.model, pred_mot_path, gt_mot_path)
-                self.log_dict(metrics, sync_dist=True)
-        
-        self.epochs += 1
+            ari = compute_ari(self.model)
+            logs = {"mean_ari": ari,}
+            self.log_dict(logs, sync_dist=True)
+
         
         avg_loss = torch.stack([x["loss"] for x in outputs]).mean()
         logs = {

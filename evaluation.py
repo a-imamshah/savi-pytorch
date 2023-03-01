@@ -13,9 +13,6 @@ from torchvision.transforms import transforms
 import pytorch_lightning as pl
 from PIL import Image
 
-import json
-from eval_utils import binarize_masks, rle_encode
-import eval_mot
 
 from model import SAViModel
 from params import SAViParams
@@ -194,93 +191,3 @@ def compute_ari(model):
         ari_log.append(torch.mean(ari))
 
     return torch.mean(torch.stack(ari_log))
-
-
-
-def generate_gt_file(model, dataloader, n_frames=33, n_slots=11, save_path=None, device=None):
-    ''' Generate json file containing mask and object id predictions per frame for each video in testset.
-    '''
-    pred_list = []
-    id_counter = 0
-    for step, (imgs, gt_masks) in enumerate(dataloader):
-        bs = imgs.size(0)        
-        soft_masks = gt_masks.cpu()
-        
-        for b in range(bs):
-            video = []
-            obj_ids = np.arange(n_slots) + id_counter
-            for t in range(n_frames):
-                binarized_masks = binarize_masks(soft_masks[b,t])
-                binarized_masks = np.array(binarized_masks).astype(np.uint8)
-
-                frame = {}
-                masks = []
-                ids = []
-                for j in range(n_slots):
-                    if binarized_masks[j].sum() == 0.:
-                        continue
-                    else:
-                        masks.append(rle_encode(binarized_masks[j]))
-                        ids.append(int(obj_ids[j]))
-                frame['masks'] = masks
-                frame['ids'] = ids
-                video.append(frame)
-            
-            pred_list.append(video)
-            id_counter += n_slots  
-
-    with open(save_path, 'w') as outfile:
-        json.dump(pred_list, outfile)
-        
-        
-def generate_annotation_file(model, dataloader, n_frames=33, n_slots=11, save_path=None, device=None):
-    ''' Generate json file containing mask and object id predictions per frame for each video in testset.
-    '''
-    pred_list = []
-    id_counter = 0
-    for step, (imgs, gt_masks) in enumerate(dataloader):
-        bs = imgs.size(0)
-        #perform inference
-        with torch.no_grad():
-            recon_combined, recons, masks, slots_all = model(imgs.float().to(device))        
-        soft_masks = masks.permute(0,2,1,3,4,5).cpu()
-        
-        for b in range(bs):
-            video = []
-            obj_ids = np.arange(n_slots) + id_counter
-            for t in range(n_frames):
-                binarized_masks = binarize_masks(soft_masks[b,t])
-                binarized_masks = np.array(binarized_masks).astype(np.uint8)
-
-                frame = {}
-                masks = []
-                ids = []
-                for j in range(n_slots):
-                    # ignore slots with empty masks
-                    if binarized_masks[j].sum() == 0.:
-                        continue
-                    else:
-                        masks.append(rle_encode(binarized_masks[j]))
-                        ids.append(int(obj_ids[j]))
-                frame['masks'] = masks
-                frame['ids'] = ids
-                video.append(frame)
-            
-            pred_list.append(video)
-            id_counter += n_slots  
-
-    with open(save_path, 'w') as outfile:
-        json.dump(pred_list, outfile)
-
-
-def compute_mot_metrics(model, pred_mot_path, gt_mot_path):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = model.to(device)
-    val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False)
-    
-    if os.path.exists(gt_mot_path)==False:
-        generate_gt_file(model=model, dataloader=val_dataloader, save_path=gt_mot_path)
-        
-    generate_annotation_file(model=model, dataloader=val_dataloader, save_path=pred_mot_path, device=device)
-    metrics = eval_mot.evaluate(pred_mot_path, gt_mot_path)
-    return metrics
